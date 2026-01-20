@@ -12,40 +12,71 @@ app.use(bodyParser.json());
 
 const server = http.createServer(app);
 const s = new WebSocket.Server({ server });
-let hue = 0;
+class LinkedLampGroup {
+    constructor(name, client) {
+        this.name = name;
+        this.clients = [client];
+        this.hue = 0;
+    }
+}
+var groups = new Map();
+var clients = new Map();
 
-function setHue(increase) {
-  hue += increase ? 1 : -1;
-  if (hue >= 256) {
-    hue = 0;
-  } else if (hue < 0) {
-    hue = 255;
-  }
-  console.log(`hue changed to ${hue}`);
+function setHue(increase, emitterGroup) {
+    emitterGroup.hue += increase ? 1 : -1;
+    if (emitterGroup.hue >= 256) {
+        emitterGroup.hue = 0;
+    } else if (emitterGroup.hue < 0) {
+        emitterGroup.hue = 255;
+    }
+    console.log(`Hue on group ${emitterGroup.name} changed to ${emitterGroup.hue}`);
 }
 
-function onMessage(message) {
-  console.log(`Received: ${message}`);
-  if (message == '+') {
-    setHue(true);
-  } else if (message == '-') {
-    setHue(false);
-  }
-  console.log(`broadcasting hue ${hue}`);
-  s.clients.forEach((client) => {
-    client.send(`${hue}`);
-  });
+function onMessage(client, message) {
+    if (message.substr(0, 5) == "AUTH:") {
+        let groupName = message.substr(5);
+        console.log("Received AUTH message for group " + groupName);
+        var group;
+        if (groups.has(groupName)) {
+            group = groups.get(groupName);
+            group.clients.push(client);
+            console.log("Registered client on group " + groupName);
+        }
+        else {
+            group = new LinkedLampGroup(groupName, client);
+            groups.set(groupName, group);
+            console.log("Created group " + groupName+ " and registered client");
+        }
+        clients.set(client, group);
+        return;
+    }
+    if (!clients.has(client)) {
+        return;
+    }
+    var emitterGroup = clients.get(client);
+    console.log(`Received: ${message} from group ${emitterGroup.name}`);
+    if (message == '+') {
+        setHue(true, emitterGroup);
+    } else if (message == '-') {
+        setHue(false, emitterGroup);
+    }
+    console.log(`Broadcasting hue ${hue} to group ${emitterGroup.name}`);
+    emitterGroup.clients.forEach((client) => {
+        client.send(`${hue}`);
+    });
 }
 
 function onDisconnection(ws) {
-  console.log(`lost one client ${ws}`);
+    console.log(`lost one client ${ws}`);
+    let groupName = clients.get(ws).name;
+    clients.delete(ws);
+    groups.get(groupName).clients.splice();
 }
 
 function onConnection(ws) {
-  console.log('new client connected');
-  ws.on('message', (message) => onMessage(message));
-  ws.on('close', () => onDisconnection(ws));
-  ws.send(`${hue}`);
+    console.log('new client connected');
+    ws.on('message', (ws, message) => onMessage(ws, message));
+    ws.on('close', () => onDisconnection(ws));
 }
 
 s.on('connection', (ws) => onConnection(ws));
