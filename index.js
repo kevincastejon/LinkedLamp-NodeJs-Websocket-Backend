@@ -33,8 +33,13 @@ function setHue(increase, emitterGroup) {
 }
 
 function onMessage(client, message) {
+    message = message.toString();
     if (message.substr(0, 5) == "AUTH:") {
-        let groupName = message.substr(5);
+        if (message.length == 5) {
+            console.log("Received empty auth");
+            return;
+        }
+        let groupName = message.substr(5).toLowerCase();
         console.log("Received AUTH message for group " + groupName);
         var group;
         if (groups.has(groupName)) {
@@ -45,7 +50,7 @@ function onMessage(client, message) {
         else {
             group = new LinkedLampGroup(groupName, client);
             groups.set(groupName, group);
-            console.log("Created group " + groupName+ " and registered client");
+            console.log("Created group " + groupName + " and registered client");
         }
         clients.set(client, group);
         return;
@@ -54,28 +59,30 @@ function onMessage(client, message) {
         return;
     }
     var emitterGroup = clients.get(client);
-    console.log(`Received: ${message} from group ${emitterGroup.name}`);
+    console.log(`${message} hue for group ${emitterGroup.name}`);
     if (message == '+') {
         setHue(true, emitterGroup);
     } else if (message == '-') {
         setHue(false, emitterGroup);
     }
-    console.log(`Broadcasting hue ${hue} to group ${emitterGroup.name}`);
+    console.log(`Broadcasting hue ${emitterGroup.hue} to group ${emitterGroup.name}`);
     emitterGroup.clients.forEach((client) => {
-        client.send(`${hue}`);
+        client.send(`${emitterGroup.hue}`);
     });
 }
 
 function onDisconnection(ws) {
-    console.log(`lost one client ${ws}`);
-    let groupName = clients.get(ws).name;
-    clients.delete(ws);
-    groups.get(groupName).clients.splice();
+    console.log(`Client disconnected  ${ws}`);
+    if (clients.has(ws)) {
+        let groupName = clients.get(ws).name;
+        clients.delete(ws);
+        groups.get(groupName).clients = clients.filter(c => c !== ws);
+    }
 }
 
 function onConnection(ws) {
-    console.log('new client connected');
-    ws.on('message', (ws, message) => onMessage(ws, message));
+    console.log(`Client connected  ${ws}`);
+    ws.on('message', (message) => onMessage(ws, message));
     ws.on('close', () => onDisconnection(ws));
 }
 
