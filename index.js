@@ -53,6 +53,7 @@ function onMessage(client, message) {
             console.log("Created group " + groupName + " and registered client");
         }
         clients.set(client, group);
+        client.send(`${group.hue}`)
         return;
     }
     if (!clients.has(client)) {
@@ -76,7 +77,7 @@ function onDisconnection(ws) {
     if (clients.has(ws)) {
         let groupName = clients.get(ws).name;
         clients.delete(ws);
-        groups.get(groupName).clients = clients.filter(c => c !== ws);
+        groups.get(groupName).clients = groups.get(groupName).clients.filter(c => c !== ws);
     }
 }
 
