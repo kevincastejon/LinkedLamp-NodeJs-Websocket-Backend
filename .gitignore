@@ -140,3 +140,5 @@ dist
 .vs
 .vsidx
 slnx.sqlite
+
+db.json
