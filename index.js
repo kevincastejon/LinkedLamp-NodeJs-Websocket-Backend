@@ -618,36 +618,42 @@ wss.on('connection', (ws) => {
         data = JSON.parse(msg);
       } catch {
         console.log(`[WS] auth parse error peer=${peer}`);
-        return safeClose(ws, 1008, 'auth_error');
+        ws.send(JSON.stringify({ type: 'ko', code: 1008, reason: 'auth_error' }));
+        return;
       }
 
       if (!data || data.type !== 'auth') {
         console.log(`[WS] auth required peer=${peer}`);
-        return safeClose(ws, 1008, 'auth_required');
+        ws.send(JSON.stringify({ type: 'ko', code: 1008, reason: 'auth_required' }));
+        return;
       }
 
       const token = String(data.token || '').trim();
       const gid = String(data.groupId || '').trim();
       if (!token || !gid) {
         console.log(`[WS] auth missing fields peer=${peer}`);
-        return safeClose(ws, 1008, 'auth_required');
+        ws.send(JSON.stringify({ type: 'ko', code: 1008, reason: 'auth_required' }));
+        return;
       }
 
       const user = findUserByToken(token);
       if (!user) {
         console.log(`[WS] auth invalid token peer=${peer}`);
-        return safeClose(ws, 1008, 'invalid_token');
+        ws.send(JSON.stringify({ type: 'ko', code: 1008, reason: 'invalid_token' }));
+        return;
       }
 
       const group = getGroupById(gid);
       if (!group) {
         console.log(`[WS] auth group not found peer=${peer} user=${user.username} groupId=${gid}`);
-        return safeClose(ws, 1008, 'group_not_found');
+        ws.send(JSON.stringify({ type: 'ko', code: 1008, reason: 'group_not_found' }));
+        return;
       }
 
       if (!isMember(user.id, gid)) {
         console.log(`[WS] auth not member peer=${peer} user=${user.username} groupId=${gid}`);
-        return safeClose(ws, 1008, 'not_member');
+        ws.send(JSON.stringify({ type: 'ko', code: 1008, reason: 'not_member' }));
+        return;
       }
 
       authed = true;
