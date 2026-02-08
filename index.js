@@ -7,6 +7,7 @@ const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
 const app = express();
 
@@ -187,6 +188,47 @@ function groupFlagsForUser(userId, group) {
     canManageMembers: isOwner,
   };
 }
+function generateTempPassword() {
+  return crypto.randomBytes(9).toString('base64url');
+}
+
+function getSmtpConfig() {
+  const host = process.env.SMTP_HOST || '';
+  const port = parseInt(process.env.SMTP_PORT || '0', 10);
+  const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true';
+  const user = process.env.SMTP_USER || '';
+  const pass = process.env.SMTP_PASS || '';
+  const from = process.env.SMTP_FROM || '';
+  return {
+    host, port, secure, user, pass, from,
+  };
+}
+
+function smtpReady(cfg) {
+  return !!(cfg.host && cfg.port && cfg.user && cfg.pass && cfg.from);
+}
+
+async function sendResetEmail(toEmail, username, newPassword) {
+  const cfg = getSmtpConfig();
+  if (!smtpReady(cfg)) throw new Error('smtp_not_configured');
+
+  const transporter = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: { user: cfg.user, pass: cfg.pass },
+  });
+
+  const subject = 'LinkedLamp - Password recovery';
+  const text = `Hello ${username},\n\nYour new password is:\n\n${newPassword}\n\nYou can change it later from the app.\n`;
+
+  await transporter.sendMail({
+    from: cfg.from,
+    to: toEmail,
+    subject,
+    text,
+  });
+}
 
 app.post('/register', (req, res) => {
   const username = String(req.body?.username || '').trim();
@@ -247,6 +289,38 @@ app.post('/login', (req, res) => {
   const token = decryptString(user.tokenEnc);
   console.log(`[API] login success username=${username} userId=${user.id}`);
   res.json({ token });
+});
+app.post('/forgot-password', async (req, res) => {
+  const username = String(req.body?.username || '').trim();
+
+  console.log(`[API] forgot password attempt username=${username || '(empty)'}`);
+
+  if (!username) return res.status(400).json({ error: 'missing_username' });
+
+  const user = findUserByUsername(username);
+  if (!user) {
+    console.log(`[API] forgot password user not found username=${username}`);
+    return res.status(404).json({ error: 'user_not_found' });
+  }
+
+  const email = user.email ? String(user.email).trim() : '';
+  if (!email) {
+    console.log(`[API] forgot password email not set username=${username}`);
+    return res.status(400).json({ error: 'email_not_set' });
+  }
+
+  const newPassword = generateTempPassword();
+  user.passwordHash = hashPassword(newPassword);
+  writeDbFile(db);
+
+  try {
+    await sendResetEmail(email, user.username, newPassword);
+    console.log(`[API] forgot password success username=${username} email=${email}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.log(`[API] forgot password email send failed username=${username} err=${e && e.message ? e.message : String(e)}`);
+    res.status(500).json({ error: 'email_send_failed' });
+  }
 });
 
 app.get('/groups', requireAuth, (req, res) => {
@@ -411,6 +485,84 @@ app.delete('/me', requireAuth, (req, res) => {
   writeDbFile(db);
 
   console.log(`[API] delete account success user=${username} userId=${userId} deletedGroups=${ownedGroupIds.length}`);
+  res.json({ ok: true });
+});
+
+app.get('/groups/:groupId/members', requireAuth, (req, res) => {
+  const groupId = String(req.params.groupId || '');
+  const group = getGroupById(groupId);
+
+  console.log(`[API] members list attempt user=${req.user.username} groupId=${groupId}`);
+
+  if (!group) return res.status(404).json({ error: 'group_not_found' });
+
+  const role = getMemberRole(req.user.id, groupId);
+  const isOwner = role === 'owner' && group.ownerUserId === req.user.id;
+  if (!isOwner) return res.status(403).json({ error: 'forbidden' });
+
+  const members = db.groupMembers
+    .filter((m) => m.groupId === groupId)
+    .map((m) => {
+      const u = db.users.find((x) => x.id === m.userId) || null;
+      return {
+        userId: m.userId,
+        username: u ? u.username : null,
+        role: m.role,
+      };
+    })
+    .filter((x) => x.username !== null);
+
+  console.log(`[API] members list success user=${req.user.username} groupId=${groupId} count=${members.length}`);
+  res.json({ members });
+});
+
+app.delete('/groups/:groupId/members/:userId', requireAuth, (req, res) => {
+  const groupId = String(req.params.groupId || '');
+  const targetUserId = String(req.params.userId || '');
+  const group = getGroupById(groupId);
+
+  console.log(`[API] member remove attempt user=${req.user.username} groupId=${groupId} targetUserId=${targetUserId}`);
+
+  if (!group) return res.status(404).json({ error: 'group_not_found' });
+
+  const role = getMemberRole(req.user.id, groupId);
+  const isOwner = role === 'owner' && group.ownerUserId === req.user.id;
+  if (!isOwner) return res.status(403).json({ error: 'forbidden' });
+
+  const targetRole = getMemberRole(targetUserId, groupId);
+  if (!targetRole) return res.status(404).json({ error: 'not_a_member' });
+
+  if (targetRole === 'owner') return res.status(403).json({ error: 'cannot_remove_owner' });
+
+  db.groupMembers = db.groupMembers.filter((m) => !(m.groupId === groupId && m.userId === targetUserId));
+  writeDbFile(db);
+
+  const targetUser = db.users.find((u) => u.id === targetUserId) || null;
+  console.log(`[API] member remove success owner=${req.user.username} groupId=${groupId} target=${targetUser ? targetUser.username : targetUserId}`);
+  res.json({ ok: true });
+});
+app.post('/me/change-password', requireAuth, (req, res) => {
+  const currentPassword = String(req.body?.currentPassword || '');
+  const newPassword = String(req.body?.newPassword || '');
+
+  console.log(`[API] change password attempt user=${req.user.username} userId=${req.user.id}`);
+
+  if (!currentPassword) return res.status(400).json({ error: 'missing_current_password' });
+  if (!newPassword) return res.status(400).json({ error: 'missing_new_password' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'new_password_too_short' });
+
+  const user = db.users.find((u) => u.id === req.user.id) || null;
+  if (!user) return res.status(401).json({ error: 'invalid_token' });
+
+  if (!verifyPassword(currentPassword, user.passwordHash)) {
+    console.log(`[API] change password invalid current password user=${req.user.username}`);
+    return res.status(401).json({ error: 'invalid_credentials' });
+  }
+
+  user.passwordHash = hashPassword(newPassword);
+  writeDbFile(db);
+
+  console.log(`[API] change password success user=${req.user.username} userId=${req.user.id}`);
   res.json({ ok: true });
 });
 

@@ -74,6 +74,29 @@ $env:TOKEN_ENC_KEY_B64="YOUR_BASE64_32B_KEY"
 node index.js
 ```
 
+### `SMTP` (for users password reset)
+Variables configuring SMTP (Google). (https://myaccount.google.com/apppasswords)
+
+Linux/macOS:
+```bash
+export SMTP_HOST="smtp.gmail.com"
+export SMTP_PORT="587"
+export SMTP_SECURE="false"
+export SMTP_USER="your_google_account_name@gmail.com"
+export SMTP_PASS="your_google_app_password"
+export SMTP_FROM="YourGoogleAccountName <your_google_account_name@gmail.com>"
+```
+
+Windows (PowerShell):
+```powershell
+$env:SMTP_HOST="smtp.gmail.com"
+$env:SMTP_PORT="587"
+$env:SMTP_SECURE="false"
+$env:SMTP_USER="your_google_account_name@gmail.com"
+$env:SMTP_PASS="your_google_app_password"
+$env:SMTP_FROM="YourGoogleAccountName <your_google_account_name@gmail.com>"
+```
+
 ## Data model (JSON DB)
 
 The JSON file contains:
