@@ -496,9 +496,8 @@ app.get('/groups/:groupId/members', requireAuth, (req, res) => {
 
   if (!group) return res.status(404).json({ error: 'group_not_found' });
 
-  const role = getMemberRole(req.user.id, groupId);
-  const isOwner = role === 'owner' && group.ownerUserId === req.user.id;
-  if (!isOwner) return res.status(403).json({ error: 'forbidden' });
+  const isAMember = isMember(req.user.id, groupId);
+  if (!isAMember) return res.status(403).json({ error: 'forbidden' });
 
   const members = db.groupMembers
     .filter((m) => m.groupId === groupId)
