@@ -261,7 +261,7 @@ app.post('/register', (req, res) => {
   writeDbFile(db);
 
   console.log(`[API] register success username=${username} userId=${userId}`);
-  res.json({ token });
+  res.json({ token, userId, username });
 });
 
 app.post('/login', (req, res) => {
@@ -288,7 +288,7 @@ app.post('/login', (req, res) => {
 
   const token = decryptString(user.tokenEnc);
   console.log(`[API] login success username=${username} userId=${user.id}`);
-  res.json({ token });
+  res.json({ token, userId: user.id, username });
 });
 app.post('/forgot-password', async (req, res) => {
   const username = String(req.body?.username || '').trim();
