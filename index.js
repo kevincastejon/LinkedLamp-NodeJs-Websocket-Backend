@@ -1,3 +1,4 @@
+/* eslint-disable linebreak-style */
 /* eslint-disable no-restricted-syntax */
 /* eslint-disable no-empty */
 /* eslint-disable no-underscore-dangle */
@@ -6,7 +7,6 @@
 /* eslint-disable consistent-return */
 /* eslint-disable no-console */
 /* eslint-disable indent */
-/* eslint-disable linebreak-style */
 const bodyParser = require('body-parser');
 const express = require('express');
 const cors = require('cors');
@@ -172,7 +172,7 @@ function ensureDefaultGroupForUser(user) {
     }
 
     const id = crypto.randomUUID();
-    const name = `${user.username}LinkedGroup`;
+    const name = `${user.username}'s Group`;
     const group = {
         id, name, ownerUserId: user.id, isDefault: true,
     };
